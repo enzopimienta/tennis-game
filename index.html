@@ -56,16 +56,16 @@
           </div>
           <div class="player-details right-align">
             <span class="serve-indicator" id="p2-serve"></span>
-            <span class="player-name" id="p2-label">IA (ALEX)</span>
+            <span class="player-name" id="p2-label">ALEX</span>
           </div>
           <div class="player-avatar p2-avatar">IA</div>
         </div>
       </div>
     </header>
 
-    <!-- Canvas Court Container -->
+    <!-- Canvas Court Container (Portrait-Optimized for Mobile) -->
     <main class="court-viewport" id="court-viewport">
-      <canvas id="gameCanvas" width="900" height="600"></canvas>
+      <canvas id="gameCanvas" width="520" height="840"></canvas>
 
       <!-- Announcement Banner -->
       <div id="announcement" class="announcement-banner hidden">
@@ -134,27 +134,19 @@
 
           <button id="btn-start" class="btn-primary">JOUER LE MATCH</button>
 
-          <!-- QR Code info for mobile access -->
-          <div class="mobile-promo-box">
-            <div class="promo-text">
-              <strong>📱 Jouer sur Samsung S23 :</strong>
-              <p>Ouvrez <a href="https://enzopimienta.github.io/tennis-game/" target="_blank">enzopimienta.github.io/tennis-game/</a> puis "Ajouter à l'écran d'accueil".</p>
-            </div>
-          </div>
-
           <div class="controls-cheatsheet">
             <div class="control-col">
               <h4>Tactile (Mobile)</h4>
               <p>🕹️ <strong>Joystick gauche</strong> : Déplacement</p>
               <p>🔴 <strong>Bouton FRAPPE</strong> : Service & Frappe</p>
-              <p>🟢 <strong>Bouton LIFT</strong> : Frappe rapide plongeante</p>
-              <p>🔵 <strong>Bouton SLICE</strong> : Amortie courte</p>
+              <p>🟢 <strong>Bouton LIFT</strong> : Frappe liftée plongeante</p>
+              <p>🔵 <strong>Bouton SLICE</strong> : Amortie douce</p>
             </div>
             <div class="control-col desktop-only">
               <h4>Clavier (PC)</h4>
               <p><kbd>Flèches</kbd> Déplacement</p>
               <p><kbd>Espace</kbd> Frappe / Service</p>
-              <p><kbd>W</kbd> ou <kbd>Z</kbd> Lift / Puissant</p>
+              <p><kbd>W</kbd> ou <kbd>Z</kbd> Lift</p>
               <p><kbd>X</kbd> Amortie</p>
             </div>
           </div>

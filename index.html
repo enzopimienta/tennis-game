@@ -2,20 +2,34 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Antigravity Tennis Masters 🎾</title>
+  
+  <!-- PWA & Mobile Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="theme-color" content="#0a0e17">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="screen-orientation" content="portrait">
+  
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Teko:wght@600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="game-wrapper">
+  <div class="game-wrapper" id="game-wrapper">
     <!-- Header / Scoreboard -->
     <header class="scoreboard-container">
       <div class="match-meta">
         <span class="tournament-badge">🏆 GRAND CHELEM OPEN</span>
-        <span id="court-name">TERRE BATTUE</span>
+        <div class="meta-right">
+          <span id="court-name">TERRE BATTUE</span>
+          <button id="btn-fullscreen" class="chip-btn" title="Plein écran">⛶</button>
+        </div>
       </div>
       
       <div class="scoreboard">
@@ -50,12 +64,37 @@
     </header>
 
     <!-- Canvas Court Container -->
-    <main class="court-viewport">
+    <main class="court-viewport" id="court-viewport">
       <canvas id="gameCanvas" width="900" height="600"></canvas>
 
       <!-- Announcement Banner -->
       <div id="announcement" class="announcement-banner hidden">
         <h2 id="announcement-text">JEU !</h2>
+      </div>
+
+      <!-- Touch Controls Layer for Mobile (Samsung S23 & Touchscreens) -->
+      <div id="touch-controls" class="touch-controls-layer">
+        <!-- Virtual Joystick (Left Thumb) -->
+        <div id="joystick-zone" class="joystick-container">
+          <div id="joystick-base" class="joystick-base">
+            <div id="joystick-stick" class="joystick-stick"></div>
+          </div>
+        </div>
+
+        <!-- Action Buttons (Right Thumb) -->
+        <div class="touch-actions-container">
+          <div class="touch-sub-actions">
+            <button id="btn-touch-slice" class="touch-btn action-slice" title="Amortie / Slice">
+              <span>SLICE</span>
+            </button>
+            <button id="btn-touch-topspin" class="touch-btn action-topspin" title="Lift / Topspin">
+              <span>LIFT</span>
+            </button>
+          </div>
+          <button id="btn-touch-hit" class="touch-btn action-hit" title="Frappe / Service">
+            <span>FRAPPE</span>
+          </button>
+        </div>
       </div>
 
       <!-- Start / Pause Menu Overlay -->
@@ -95,19 +134,28 @@
 
           <button id="btn-start" class="btn-primary">JOUER LE MATCH</button>
 
+          <!-- QR Code info for mobile access -->
+          <div class="mobile-promo-box">
+            <div class="promo-text">
+              <strong>📱 Jouer sur Samsung S23 :</strong>
+              <p>Ouvrez <a href="https://enzopimienta.github.io/tennis-game/" target="_blank">enzopimienta.github.io/tennis-game/</a> puis "Ajouter à l'écran d'accueil".</p>
+            </div>
+          </div>
+
           <div class="controls-cheatsheet">
             <div class="control-col">
-              <h4>Joueur 1 (Bas)</h4>
-              <p><kbd>Flèches</kbd> Déplacement</p>
-              <p><kbd>Espace</kbd> Frappe à plat / Service</p>
-              <p><kbd>W</kbd> ou <kbd>Z</kbd> Lift / Puissant</p>
-              <p><kbd>X</kbd> Amortie / Slice</p>
+              <h4>Tactile (Mobile)</h4>
+              <p>🕹️ <strong>Joystick gauche</strong> : Déplacement</p>
+              <p>🔴 <strong>Bouton FRAPPE</strong> : Service & Frappe</p>
+              <p>🟢 <strong>Bouton LIFT</strong> : Frappe rapide plongeante</p>
+              <p>🔵 <strong>Bouton SLICE</strong> : Amortie courte</p>
             </div>
-            <div class="control-col" id="p2-controls-hint">
-              <h4>Joueur 2 (Haut)</h4>
-              <p><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> Déplacement</p>
-              <p><kbd>F</kbd> Frappe à plat</p>
-              <p><kbd>G</kbd> Lift / Puissant</p>
+            <div class="control-col desktop-only">
+              <h4>Clavier (PC)</h4>
+              <p><kbd>Flèches</kbd> Déplacement</p>
+              <p><kbd>Espace</kbd> Frappe / Service</p>
+              <p><kbd>W</kbd> ou <kbd>Z</kbd> Lift / Puissant</p>
+              <p><kbd>X</kbd> Amortie</p>
             </div>
           </div>
         </div>
@@ -119,13 +167,13 @@
       <div class="footer-left">
         <button id="btn-pause" class="icon-btn" title="Pause (P)">⏸ Pause</button>
         <button id="btn-sound" class="icon-btn" title="Activer/Désactiver le son">🔊 Son</button>
-        <button id="btn-restart" class="icon-btn" title="Nouvelle partie">🔄 Recommencer</button>
+        <button id="btn-restart" class="icon-btn" title="Nouvelle partie">🔄 Reset</button>
       </div>
       <div class="footer-center">
-        <span id="match-status">Appuyez sur ESPACE pour servir</span>
+        <span id="match-status">Prêt pour le service</span>
       </div>
       <div class="footer-right">
-        <span class="credit">Créé avec Antigravity pour @enzopimienta</span>
+        <span class="credit">@enzopimienta</span>
       </div>
     </footer>
   </div>

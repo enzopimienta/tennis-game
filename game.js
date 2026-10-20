@@ -1,11 +1,12 @@
 /**
  * Antigravity Tennis Masters
  * A polished retro-arcade HTML5 Canvas Tennis Game
+ * Mobile-Adapted for Smartphones (Samsung Galaxy S23, iPhone, etc.) & Desktop
  * Author: Antigravity for @enzopimienta
  */
 
 // ==========================================
-// 1. SOUND SYNTHESIS ENGINE (Web Audio API)
+// 1. SOUND & HAPTICS ENGINE (Web Audio API)
 // ==========================================
 class SoundEngine {
   constructor() {
@@ -16,24 +17,35 @@ class SoundEngine {
   init() {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioCtx();
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
     }
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
   }
 
+  vibrate(pattern) {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(pattern);
+      } catch (e) {}
+    }
+  }
+
   playHit(type = 'normal') {
+    this.vibrate(18);
     if (!this.enabled || !this.ctx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    let freq = 220;
+    let freq = 230;
     let duration = 0.08;
 
     if (type === 'topspin') {
-      freq = 320;
+      freq = 330;
       duration = 0.1;
     } else if (type === 'slice') {
       freq = 180;
@@ -44,7 +56,7 @@ class SoundEngine {
     osc.frequency.setValueAtTime(freq, now);
     osc.frequency.exponentialRampToValueAtTime(80, now + duration);
 
-    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.setValueAtTime(0.35, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
 
     osc.connect(gain);
@@ -55,6 +67,7 @@ class SoundEngine {
   }
 
   playBounce() {
+    this.vibrate(10);
     if (!this.enabled || !this.ctx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
@@ -75,6 +88,7 @@ class SoundEngine {
   }
 
   playNet() {
+    this.vibrate([30, 20, 30]);
     if (!this.enabled || !this.ctx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
@@ -95,6 +109,7 @@ class SoundEngine {
   }
 
   playPointWin() {
+    this.vibrate([20, 40, 20, 40, 60]);
     if (!this.enabled || !this.ctx) return;
     const notes = [261.63, 329.63, 392.00, 523.25]; // C E G C
     notes.forEach((freq, idx) => {
@@ -105,7 +120,7 @@ class SoundEngine {
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, now);
 
-      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.setValueAtTime(0.2, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
 
       osc.connect(gain);
@@ -117,6 +132,7 @@ class SoundEngine {
   }
 
   playFault() {
+    this.vibrate([40, 30, 40]);
     if (!this.enabled || !this.ctx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
@@ -215,7 +231,7 @@ class TennisGame {
       p1Sets: 0,
       p2Sets: 0,
       server: 1, // 1 for P1, 2 for P2
-      deuceSide: true // true = serve to deuce court (right to left diag)
+      deuceSide: true
     };
 
     // Entities
@@ -226,7 +242,7 @@ class TennisGame {
       vx: 0,
       vy: 0,
       vz: 0,
-      radius: 6,
+      radius: 6.5,
       bounceCount: 0,
       lastHitter: 1,
       inPlay: false,
@@ -240,11 +256,10 @@ class TennisGame {
       vx: 0,
       vy: 0,
       speed: 4.8,
-      racketRadius: 28,
+      racketRadius: 30,
       swinging: false,
       swingType: 'normal',
-      swingProgress: 0,
-      score: 0
+      swingProgress: 0
     };
 
     this.p2 = {
@@ -254,13 +269,25 @@ class TennisGame {
       vx: 0,
       vy: 0,
       speed: 4.5,
-      racketRadius: 28,
+      racketRadius: 30,
       swinging: false,
       swingType: 'normal',
       swingProgress: 0,
-      score: 0,
       targetX: 450,
       aiTimer: 0
+    };
+
+    // Virtual Touch Joystick State (Mobile / S23)
+    this.joystick = {
+      active: false,
+      identifier: null,
+      startX: 0,
+      startY: 0,
+      currentX: 0,
+      currentY: 0,
+      vectorX: 0,
+      vectorY: 0,
+      maxRadius: 40
     };
 
     this.particles = [];
@@ -268,13 +295,28 @@ class TennisGame {
     this.keys = {};
 
     this.setupListeners();
+    this.setupTouchControls();
+    this.setupPWA();
     this.updateScoreboardUI();
     this.resizeCanvas();
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
   }
 
+  // ==========================================
+  // INPUT LISTENERS & TOUCH CONTROLS
+  // ==========================================
   setupListeners() {
+    // Unlock Audio on first user interaction (critical for mobile)
+    const unlockAudio = () => {
+      this.sound.init();
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+
+    // Keyboard Listeners
     window.addEventListener('keydown', (e) => {
       this.sound.init();
       this.keys[e.code] = true;
@@ -283,7 +325,7 @@ class TennisGame {
         this.togglePause();
       }
 
-      // Handle serve input
+      // Serve triggers
       if (this.gameState === 'serving' && !this.isPaused) {
         if (this.score.server === 1 && (e.code === 'Space' || e.code === 'KeyW' || e.code === 'KeyZ')) {
           this.triggerServe(1, e.code === 'Space' ? 'normal' : 'topspin');
@@ -298,8 +340,11 @@ class TennisGame {
     });
 
     window.addEventListener('resize', () => this.resizeCanvas());
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => this.resizeCanvas(), 100);
+    });
 
-    // Menu Controls
+    // Menu Selectors
     document.querySelectorAll('#mode-selector button').forEach(btn => {
       btn.addEventListener('click', (e) => {
         document.querySelectorAll('#mode-selector button').forEach(b => b.classList.remove('active'));
@@ -307,7 +352,6 @@ class TennisGame {
         this.mode = e.target.dataset.mode;
         document.getElementById('difficulty-group').style.display = this.mode === 'ai' ? 'block' : 'none';
         document.getElementById('p2-label').textContent = this.mode === 'ai' ? 'IA (ALEX)' : 'JOUEUR 2';
-        document.getElementById('p2-controls-hint').style.opacity = this.mode === '2p' ? '1' : '0.4';
       });
     });
 
@@ -345,10 +389,136 @@ class TennisGame {
       this.resetMatch();
       this.startMatch();
     });
+
+    // Fullscreen Toggle
+    const fsBtn = document.getElementById('btn-fullscreen');
+    if (fsBtn) {
+      fsBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+          fsBtn.textContent = '✕';
+        } else {
+          document.exitFullscreen().catch(() => {});
+          fsBtn.textContent = '⛶';
+        }
+      });
+    }
+  }
+
+  setupTouchControls() {
+    const joystickZone = document.getElementById('joystick-zone');
+    const joystickBase = document.getElementById('joystick-base');
+    const joystickStick = document.getElementById('joystick-stick');
+
+    if (!joystickZone || !joystickStick) return;
+
+    const onPointerDown = (e) => {
+      e.preventDefault();
+      this.sound.init();
+      const rect = joystickBase.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      this.joystick.active = true;
+      this.joystick.identifier = e.pointerId;
+      this.joystick.startX = centerX;
+      this.joystick.startY = centerY;
+      updateJoystickPosition(e.clientX, e.clientY);
+    };
+
+    const updateJoystickPosition = (clientX, clientY) => {
+      const dx = clientX - this.joystick.startX;
+      const dy = clientY - this.joystick.startY;
+      const distance = Math.hypot(dx, dy);
+      const maxR = this.joystick.maxRadius;
+
+      let clampedDx = dx;
+      let clampedDy = dy;
+
+      if (distance > maxR) {
+        clampedDx = (dx / distance) * maxR;
+        clampedDy = (dy / distance) * maxR;
+      }
+
+      this.joystick.vectorX = clampedDx / maxR;
+      this.joystick.vectorY = clampedDy / maxR;
+
+      joystickStick.style.transform = `translate(${clampedDx}px, ${clampedDy}px)`;
+    };
+
+    const onPointerMove = (e) => {
+      if (!this.joystick.active || e.pointerId !== this.joystick.identifier) return;
+      e.preventDefault();
+      updateJoystickPosition(e.clientX, e.clientY);
+    };
+
+    const onPointerUp = (e) => {
+      if (e.pointerId !== this.joystick.identifier) return;
+      this.joystick.active = false;
+      this.joystick.identifier = null;
+      this.joystick.vectorX = 0;
+      this.joystick.vectorY = 0;
+      joystickStick.style.transform = `translate(0px, 0px)`;
+    };
+
+    joystickZone.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+
+    // Mobile Action Buttons (Hit / Topspin / Slice)
+    const btnHit = document.getElementById('btn-touch-hit');
+    const btnTopspin = document.getElementById('btn-touch-topspin');
+    const btnSlice = document.getElementById('btn-touch-slice');
+
+    const handleAction = (type) => {
+      this.sound.init();
+      if (this.gameState === 'serving') {
+        if (this.score.server === 1) {
+          this.triggerServe(1, type);
+        }
+      } else if (this.gameState === 'rally') {
+        this.trySwing(this.p1, type);
+      }
+    };
+
+    if (btnHit) {
+      btnHit.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handleAction('normal');
+      });
+    }
+
+    if (btnTopspin) {
+      btnTopspin.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handleAction('topspin');
+      });
+    }
+
+    if (btnSlice) {
+      btnSlice.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handleAction('slice');
+      });
+    }
+
+    // Direct touch-to-move tap on canvas (optional alternative)
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (this.gameState === 'serving' && this.score.server === 1) {
+        handleAction('normal');
+      }
+    });
+  }
+
+  setupPWA() {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
   }
 
   resizeCanvas() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     this.canvas.width = COURT.width * dpr;
     this.canvas.height = COURT.height * dpr;
     this.ctx.resetTransform();
@@ -378,7 +548,7 @@ class TennisGame {
   togglePause() {
     if (this.gameState === 'menu') return;
     this.isPaused = !this.isPaused;
-    document.getElementById('btn-pause').textContent = this.isPaused ? '▶ Reprendre' : '⏸ Pause';
+    document.getElementById('btn-pause').textContent = this.isPaused ? '▶ Play' : '⏸ Pause';
     if (this.isPaused) {
       this.showAnnouncement('PAUSE', 0);
     } else {
@@ -404,7 +574,7 @@ class TennisGame {
       this.p2.y = 90;
       this.ball.x = this.p1.x + 10;
       this.ball.y = this.p1.y - 15;
-      document.getElementById('match-status').textContent = 'P1 au service - ESPACE pour frapper';
+      document.getElementById('match-status').textContent = 'P1 au service - Touchez FRAPPE';
     } else {
       this.p2.x = serveSideX;
       this.p2.y = 85;
@@ -412,14 +582,14 @@ class TennisGame {
       this.p1.y = 510;
       this.ball.x = this.p2.x + 10;
       this.ball.y = this.p2.y + 15;
-      document.getElementById('match-status').textContent = this.mode === 'ai' ? "L'IA prépare son service..." : 'P2 au service - F pour frapper';
+      document.getElementById('match-status').textContent = this.mode === 'ai' ? "L'IA prépare son service..." : 'P2 au service';
 
       if (this.mode === 'ai') {
         setTimeout(() => {
           if (this.gameState === 'serving' && this.score.server === 2 && !this.isPaused) {
             this.triggerServe(2, 'normal');
           }
-        }, 1200);
+        }, 1100);
       }
     }
 
@@ -469,7 +639,7 @@ class TennisGame {
   }
 
   // ==========================================
-  // 4. PHYSICS & RALLY LOGIC
+  // PHYSICS & MOVEMENT
   // ==========================================
   update() {
     if (this.isPaused || this.gameState === 'menu') return;
@@ -485,16 +655,21 @@ class TennisGame {
   }
 
   updatePlayers() {
-    // --- Player 1 Controls ---
+    // --- Player 1 Controls (Keyboard + Touch Joystick) ---
     let p1dx = 0;
     let p1dy = 0;
+
+    // Keyboard
     if (this.keys['ArrowLeft']) p1dx -= 1;
     if (this.keys['ArrowRight']) p1dx += 1;
     if (this.keys['ArrowUp']) p1dy -= 1;
     if (this.keys['ArrowDown']) p1dy += 1;
 
-    // Normalizing movement vector
-    if (p1dx !== 0 && p1dy !== 0) {
+    // Virtual Joystick on Mobile
+    if (this.joystick.active) {
+      p1dx = this.joystick.vectorX;
+      p1dy = this.joystick.vectorY;
+    } else if (p1dx !== 0 && p1dy !== 0) {
       p1dx *= 0.7071;
       p1dy *= 0.7071;
     }
@@ -562,38 +737,31 @@ class TennisGame {
 
     this.p2.speed = diffSettings.speed;
 
-    // AI positioning logic
     if (this.ball.vy < 0) {
-      // Ball is coming towards AI!
       const timeToReach = Math.abs((this.p2.y - this.ball.y) / (this.ball.vy || 1));
       let predictedX = this.ball.x + this.ball.vx * timeToReach;
 
-      // Add human-like error
       if (this.p2.aiTimer++ % 20 === 0) {
         this.p2.targetX = predictedX + (Math.random() - 0.5) * diffSettings.errorMargin;
       }
 
-      // Move toward target
       const dx = this.p2.targetX - this.p2.x;
       if (Math.abs(dx) > 6) {
         this.p2.x += Math.sign(dx) * this.p2.speed;
       }
 
-      // Adjust Y for ideal striking distance
       const idealY = 110;
       const dy = idealY - this.p2.y;
       if (Math.abs(dy) > 4) {
         this.p2.y += Math.sign(dy) * (this.p2.speed * 0.7);
       }
 
-      // AI auto swing when ball is within racket range
       const dist = Math.hypot(this.ball.x - this.p2.x, this.ball.y - this.p2.y);
-      if (dist < 45 && this.ball.z < 40 && this.ball.lastHitter === 1) {
+      if (dist < 46 && this.ball.z < 42 && this.ball.lastHitter === 1) {
         const shotType = Math.random() < diffSettings.attackChance ? 'topspin' : 'normal';
         this.trySwing(this.p2, shotType);
       }
     } else {
-      // Ball moving away; recover to baseline center
       const returnX = COURT.centerX;
       const returnY = 95;
       const dx = returnX - this.p2.x;
@@ -612,7 +780,7 @@ class TennisGame {
   updateBall() {
     const surface = SURFACES[this.surfaceKey];
 
-    // Trail effect
+    // Trail
     this.ballTrail.push({ x: this.ball.x, y: this.ball.y, z: this.ball.z, alpha: 0.6 });
     if (this.ballTrail.length > 8) this.ballTrail.shift();
 
@@ -628,14 +796,12 @@ class TennisGame {
     const prevY = this.ball.y - this.ball.vy;
     if ((prevY < COURT.netY && this.ball.y >= COURT.netY) || (prevY > COURT.netY && this.ball.y <= COURT.netY)) {
       if (this.ball.z < COURT.netHeight) {
-        // Hit the net!
         this.sound.playNet();
         this.createParticles(this.ball.x, COURT.netY, '#ffffff', 8);
         this.ball.vy *= -0.15;
         this.ball.vx *= 0.3;
         this.ball.vz = -0.5;
 
-        // If net fault
         setTimeout(() => {
           if (this.gameState === 'rally') {
             const winner = this.ball.lastHitter === 1 ? 2 : 1;
@@ -652,31 +818,26 @@ class TennisGame {
       this.sound.playBounce();
       this.createParticles(this.ball.x, this.ball.y, surface.courtBg, 6);
 
-      // Bounce restitution
       this.ball.vz = -this.ball.vz * surface.bounceRestitution;
       this.ball.vx *= surface.friction;
       this.ball.vy *= surface.friction;
 
-      // Check if bounce was in or out
       const isBounceIn = this.isInsideCourt(this.ball.x, this.ball.y);
 
-      // First bounce check
       if (this.ball.bounceCount === 1) {
         if (!isBounceIn) {
-          // Out on first bounce! Point to opponent
           const winner = this.ball.lastHitter === 1 ? 2 : 1;
           this.awardPoint(winner, 'FAUTE / HORS-JEU !');
           return;
         }
       } else if (this.ball.bounceCount >= 2) {
-        // Double bounce! Hitter wins the point
         this.awardPoint(this.ball.lastHitter, 'DOUBLE REBOND !');
         return;
       }
     }
 
     // Out of bounds screen limits
-    if (this.ball.y < 0 || this.ball.y > COURT.height || this.ball.x < 50 || this.ball.x > COURT.width - 50) {
+    if (this.ball.y < 0 || this.ball.y > COURT.height || this.ball.x < 40 || this.ball.x > COURT.width - 40) {
       if (this.gameState === 'rally') {
         const winner = this.ball.lastHitter === 1 ? 2 : 1;
         this.awardPoint(winner, 'BALLE DEHORS !');
@@ -685,7 +846,6 @@ class TennisGame {
   }
 
   isInsideCourt(x, y) {
-    // In singles tennis, boundary is between singlesLeft and singlesRight, and top and bottom baselines
     return (
       x >= COURT.singlesLeft &&
       x <= COURT.singlesRight &&
@@ -701,7 +861,7 @@ class TennisGame {
       const dist = Math.hypot(this.ball.x - player.x, this.ball.y - player.y);
       const isEligible = (player.id === 1 && this.ball.vy > 0) || (player.id === 2 && this.ball.vy < 0);
 
-      if (dist < player.racketRadius + 18 && this.ball.z < 50 && isEligible) {
+      if (dist < player.racketRadius + 18 && this.ball.z < 52 && isEligible) {
         this.hitBall(player);
       }
     });
@@ -712,8 +872,7 @@ class TennisGame {
     this.ball.lastHitter = player.id;
     this.ball.bounceCount = 0;
 
-    // Contact offset determines angle
-    const contactOffsetX = (this.ball.x - player.x) / player.racketRadius; // -1 to +1
+    const contactOffsetX = (this.ball.x - player.x) / player.racketRadius;
     let baseSpeed = 7.5;
     let vz = 4.2;
 
@@ -730,16 +889,12 @@ class TennisGame {
     }
 
     baseSpeed *= surface.ballSpeedMul;
-
-    // Calculate return velocities
     const angleX = contactOffsetX * 3.5;
     this.ball.vx = angleX;
 
     if (player.id === 1) {
-      // Hitting upwards towards P2
       this.ball.vy = -baseSpeed;
     } else {
-      // Hitting downwards towards P1
       this.ball.vy = baseSpeed;
     }
 
@@ -748,18 +903,15 @@ class TennisGame {
   }
 
   // ==========================================
-  // 5. SCORING & TOURNAMENT RULES
+  // SCORING
   // ==========================================
   awardPoint(winnerId, reason) {
     this.gameState = 'point_end';
     this.sound.playPointWin();
     this.showAnnouncement(reason, 1500);
 
-    if (winnerId === 1) {
-      this.score.p1Points++;
-    } else {
-      this.score.p2Points++;
-    }
+    if (winnerId === 1) this.score.p1Points++;
+    else this.score.p2Points++;
 
     this.evaluateTennisScore();
     this.updateScoreboardUI();
@@ -776,7 +928,6 @@ class TennisGame {
     const p1 = this.score.p1Points;
     const p2 = this.score.p2Points;
 
-    // Check for Game win
     if (p1 >= 4 && p1 - p2 >= 2) {
       this.winGame(1);
     } else if (p2 >= 4 && p2 - p1 >= 2) {
@@ -785,11 +936,8 @@ class TennisGame {
   }
 
   winGame(winnerId) {
-    if (winnerId === 1) {
-      this.score.p1Games++;
-    } else {
-      this.score.p2Games++;
-    }
+    if (winnerId === 1) this.score.p1Games++;
+    else this.score.p2Games++;
 
     this.score.p1Points = 0;
     this.score.p2Points = 0;
@@ -799,12 +947,8 @@ class TennisGame {
     const winnerName = winnerId === 1 ? 'JOUEUR 1' : (this.mode === 'ai' ? 'IA' : 'JOUEUR 2');
     this.showAnnouncement(`JEU ${winnerName} !`, 2000);
 
-    // Check for Set win (first to 3 games for quick arcade play)
-    if (this.score.p1Games >= 3) {
-      this.winSet(1);
-    } else if (this.score.p2Games >= 3) {
-      this.winSet(2);
-    }
+    if (this.score.p1Games >= 3) this.winSet(1);
+    else if (this.score.p2Games >= 3) this.winSet(2);
   }
 
   winSet(winnerId) {
@@ -867,7 +1011,7 @@ class TennisGame {
   }
 
   // ==========================================
-  // 6. PARTICLES & VISUAL EFFECTS
+  // PARTICLES
   // ==========================================
   createParticles(x, y, color, count = 8) {
     for (let i = 0; i < count; i++) {
@@ -899,13 +1043,13 @@ class TennisGame {
   }
 
   // ==========================================
-  // 7. RENDERING ENGINE
+  // RENDERING
   // ==========================================
   draw() {
     const ctx = this.ctx;
     const surface = SURFACES[this.surfaceKey];
 
-    // Background Surrounding Area
+    // Background
     ctx.fillStyle = surface.outerBg;
     ctx.fillRect(0, 0, COURT.width, COURT.height);
 
@@ -913,31 +1057,26 @@ class TennisGame {
     ctx.fillStyle = surface.courtBg;
     ctx.fillRect(COURT.left, COURT.top, COURT.right - COURT.left, COURT.bottom - COURT.top);
 
-    // Court Boundary Lines
+    // Lines
     ctx.strokeStyle = surface.lineColor;
     ctx.lineWidth = 3.5;
     ctx.beginPath();
 
-    // Doubles outer box
     ctx.strokeRect(COURT.left, COURT.top, COURT.right - COURT.left, COURT.bottom - COURT.top);
 
-    // Singles sidelines
     ctx.moveTo(COURT.singlesLeft, COURT.top);
     ctx.lineTo(COURT.singlesLeft, COURT.bottom);
     ctx.moveTo(COURT.singlesRight, COURT.top);
     ctx.lineTo(COURT.singlesRight, COURT.bottom);
 
-    // Service lines
     ctx.moveTo(COURT.singlesLeft, COURT.serviceTop);
     ctx.lineTo(COURT.singlesRight, COURT.serviceTop);
     ctx.moveTo(COURT.singlesLeft, COURT.serviceBottom);
     ctx.lineTo(COURT.singlesRight, COURT.serviceBottom);
 
-    // Center service line
     ctx.moveTo(COURT.centerX, COURT.serviceTop);
     ctx.lineTo(COURT.centerX, COURT.serviceBottom);
 
-    // Center marks at baselines
     ctx.moveTo(COURT.centerX, COURT.top);
     ctx.lineTo(COURT.centerX, COURT.top + 14);
     ctx.moveTo(COURT.centerX, COURT.bottom);
@@ -980,14 +1119,14 @@ class TennisGame {
       ctx.fill();
     });
 
-    // Ball Shadow (directly on court)
+    // Ball Shadow
     ctx.beginPath();
     const shadowScale = Math.max(0.3, 1 - (this.ball.z / 120));
     ctx.ellipse(this.ball.x, this.ball.y, this.ball.radius * shadowScale * 1.3, this.ball.radius * shadowScale * 0.8, 0, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(0, 0, 0, ${0.45 * shadowScale})`;
     ctx.fill();
 
-    // Ball (3D Altitude projection: drawn at y - z)
+    // Ball 3D Projection
     ctx.beginPath();
     ctx.arc(this.ball.x, this.ball.y - this.ball.z, this.ball.radius + (this.ball.z * 0.04), 0, Math.PI * 2);
     const grad = ctx.createRadialGradient(
@@ -1022,17 +1161,17 @@ class TennisGame {
   drawPlayer(player, primaryColor, secondaryColor, label) {
     const ctx = this.ctx;
 
-    // Player Shadow
+    // Shadow
     ctx.beginPath();
     ctx.ellipse(player.x, player.y + 12, 16, 7, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.fill();
 
-    // Racket Swing Arc (if swinging)
+    // Swing Arc
     if (player.swinging) {
       ctx.save();
       ctx.strokeStyle = player.swingType === 'topspin' ? '#39ff14' : (player.swingType === 'slice' ? '#00f0ff' : '#ffbe0b');
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3.5;
       ctx.beginPath();
       const swingAngle = player.id === 1 ? -Math.PI / 2 : Math.PI / 2;
       ctx.arc(player.x, player.y, player.racketRadius + 8, swingAngle - 0.9, swingAngle + 0.9);
@@ -1040,7 +1179,7 @@ class TennisGame {
       ctx.restore();
     }
 
-    // Player Body
+    // Body
     ctx.beginPath();
     ctx.arc(player.x, player.y, 14, 0, Math.PI * 2);
     const pGrad = ctx.createLinearGradient(player.x - 10, player.y - 10, player.x + 10, player.y + 10);
@@ -1052,7 +1191,7 @@ class TennisGame {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Player Label
+    // Label
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 10px Outfit, sans-serif';
     ctx.textAlign = 'center';
@@ -1067,7 +1206,6 @@ class TennisGame {
   }
 }
 
-// Instantiate game when DOM is loaded
 window.addEventListener('DOMContentLoaded', () => {
   window.game = new TennisGame();
 });
